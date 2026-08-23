@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>音樂大調教學系統 - 自由切換版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root { --primary: #3498db; --success: #2ecc71; --error: #e74c3c; --warning: #f1c40f; --dark: #2c3e50; --skip: #9b59b6; }
+        body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; background: #f0f4f8; padding: 20px; }
+        .container { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 95%; max-width: 1250px; margin: auto; }
+        
+        .piano-wrapper { overflow-x: auto; padding: 50px 10px; background: #222; border-radius: 15px; box-shadow: inset 0 0 30px #000; margin-top: 20px; }
+        .piano { display: flex; position: relative; justify-content: center; height: 250px; }
+        
+        .key { border: 1px solid #000; transition: all 0.1s; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 15px; font-weight: bold; cursor: pointer; user-select: none; text-align: center; }
+        .white { width: 55px; height: 220px; background: white; z-index: 1; border-radius: 0 0 8px 8px; color: #333; font-size: 18px; }
+        .black { width: 38px; height: 135px; background: #333; z-index: 2; margin-left: -19px; margin-right: -19px; border-radius: 0 0 5px 5px; color: #fff; font-size: 11px; line-height: 1.4; padding-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); }
+
+        .hint-white { background: #d1ecf1 !important; border-bottom: 10px solid var(--primary); }
+        .hint-black { background: var(--primary) !important; border: 1px solid white; }
+        .correct { background: var(--success) !important; color: white !important; }
+        .wrong { background: var(--error) !important; color: white !important; }
+
+        .header-box { text-align: center; margin-bottom: 20px; }
+        .student-info { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; background: #e8f4fd; padding: 15px; border-radius: 12px; }
+        .student-info input { padding: 10px; border: 1px solid #ccc; border-radius: 6px; width: 130px; }
+        .controls { margin: 20px 0; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        
+        button { padding: 12px 22px; font-size: 16px; border-radius: 8px; cursor: pointer; border: none; color: white; font-weight: bold; }
+        .btn-blue { background: var(--primary); }
+        .btn-green { background: var(--success); }
+        .btn-red { background: var(--error); }
+        .btn-gray { background: #7f8c8d; }
+        select { padding: 10px; border-radius: 8px; font-size: 16px; border: 2px solid var(--primary); cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div style="display:flex; justify-content: flex-end; margin-bottom:10px;">
+        <button class="btn-gray" style="padding: 5px 15px; font-size: 12px;" onclick="tryEnterTeacherMode()">老師管理</button>
+    </div>
+
+    <div id="studentView" class="view-section">
+        <div class="header-box">
+            <h1>🎹 音樂大調學習與挑戰</h1>
+            <div class="student-info">
+                <input type="text" id="stuName" placeholder="姓名">
+                <input type="text" id="stuClass" placeholder="班別">
+                <input type="text" id="stuNo" placeholder="學號">
+            </div>
+            <div style="font-size: 1.3rem; font-weight: bold;">
+                模式：<span id="modeName" style="color:var(--primary)">自由練習模式</span> | 
+                總分：<span id="score" style="color:var(--success)">0</span>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div id="practiceModeControls">
+                <select id="scaleSelect" onchange="initScaleAndPlay()">
+                    <option value="C">C Major</option>
+                    <option value="G">G Major (1#)</option>
+                    <option value="D">D Major (2#)</option>
+                    <option value="A">A Major (3#)</option>
+                    <option value="E">E Major (4#)</option>
+                    <option value="F">F Major (1b)</option>
+                    <option value="Bb">Bb Major (2b)</option>
+                    <option value="Eb">Eb Major (3b)</option>
+                    <option value="Ab">Ab Major (4b)</option>
+                    <option value="Db">Db Major (5b)</option>
+                </select>
+                <button class="btn-blue" onclick="playScale()">手動播放音階 🎵</button>
+                <button class="btn-green" onclick="startChallenge()">進入挑戰模式 (10題) 🚀</button>
+            </div>
+            
+            <div id="challengeModeControls" style="display:none;">
+                <button class="btn-blue" onclick="playScale(currentTargetScale)">聽範例音 🔊</button>
+                <button style="background: var(--skip)" onclick="skip()">跳過此題 💡</button>
+                <button class="btn-red" onclick="exitChallenge()">放棄並返回自由模式 🏠</button>
+            </div>
+        </div>
+
+        <div id="infoPanel" style="text-align:center; padding: 10px; color: #555; font-weight: bold;">
+            切換大調會顯示對應琴鍵並自動播放聲音。
+        </div>
+
+        <div class="piano-wrapper">
+            <div id="piano" class="piano"></div>
+        </div>
+    </div>
+
+    <div id="teacherView" style="display:none;">
+        <h2 style="text-align:center;">📊 成績管理面板</h2>
+        <div style="text-align:center; margin-bottom:20px;">
+            <button class="btn-green" onclick="exportToExcel()">導出 Excel 報表</button>
+            <button class="btn-blue" onclick="location.reload()">返回學生練習</button>
+        </div>
+        <table id="teacherTable" style="width:100%; border-collapse: collapse;">
+            <thead><tr style="background:#333; color:#fff;"><th>姓名</th><th>班別</th><th>學號</th><th>考查大調</th><th>結果</th><th>得分</th></tr></thead>
+            <tbody id="teacherTableBody" style="text-align:center;"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const synth = new Tone.Synth().toDestination();
+    let score = 0, isChallenge = false, questionCount = 0, currentStep = 0, currentTargetScale = "";
+    let allRecords = JSON.parse(localStorage.getItem('musicRecords')) || [];
+
+    const pianoLayout = [
+        {n:'F3', t:'white', name:'F'}, {n:'F#3', t:'black', name:'F#<br>Gb'},
+        {n:'G3', t:'white', name:'G'}, {n:'G#3', t:'black', name:'G#<br>Ab'},
+        {n:'A3', t:'white', name:'A'}, {n:'A#3', t:'black', name:'A#<br>Bb'},
+        {n:'B3', t:'white', name:'B'},
+        {n:'C4', t:'white', name:'C'}, {n:'C#4', t:'black', name:'C#<br>Db'},
+        {n:'D4', t:'white', name:'D'}, {n:'D#4', t:'black', name:'D#<br>Eb'},
+        {n:'E4', t:'white', name:'E'},
+        {n:'F4', t:'white', name:'F'}, {n:'F#4', t:'black', name:'F#<br>Gb'},
+        {n:'G4', t:'white', name:'G'}, {n:'G#4', t:'black', name:'G#<br>Ab'},
+        {n:'A4', t:'white', name:'A'}, {n:'A#4', t:'black', name:'A#<br>Bb'},
+        {n:'B4', t:'white', name:'B'},
+        {n:'C5', t:'white', name:'C'}, {n:'C#5', t:'black', name:'C#<br>Db'},
+        {n:'D5', t:'white', name:'D'}
+    ];
+
+    const scales = {
+        'C':['C4','D4','E4','F4','G4','A4','B4','C5'],
+        'G':['G3','A3','B3','C4','D4','E4','F#4','G4'],
+        'D':['D4','E4','F#4','G4','A4','B4','C#5','D5'],
+        'A':['A3','B3','C#4','D4','E4','F#4','G#4','A4'],
+        'E':['E3','F#3','G#3','A3','B3','C#4','D#4','E4'],
+        'F':['F3','G3','A3','Bb3','C4','D4','E4','F4'],
+        'Bb':['Bb3','C4','D4','Eb4','F4','G4','A4','Bb4'],
+        'Eb':['Eb3','F3','G3','Ab3','Bb3','C4','D4','Eb4'],
+        'Ab':['Ab3','Bb3','C4','Db4','Eb4','F4','G4','Ab4'],
+        'Db':['Db4','Eb4','F4','Gb4','Ab4','Bb4','C5','Db5']
+    };
+
+    function createPiano() {
+        const piano = document.getElementById('piano');
+        piano.innerHTML = "";
+        pianoLayout.forEach(key => {
+            const div = document.createElement('div');
+            div.className = `key ${key.t}`;
+            div.dataset.note = key.n;
+            div.innerHTML = `<span>${key.name}</span>`;
+            div.onmousedown = () => handlePress(div, key.n);
+            piano.appendChild(div);
+        });
+    }
+
+    // 自由模式切換大調：標記顏色並播放聲音
+    function initScaleAndPlay() {
+        if(isChallenge) return;
+        const selected = document.getElementById('scaleSelect').value;
+        
+        // 更新標記
+        document.querySelectorAll('.key').forEach(k => {
+            k.classList.remove('hint-white', 'hint-black', 'correct', 'wrong');
+            if (scales[selected].some(t => isSameNote(k.dataset.note, t))) {
+                k.classList.add(k.classList.contains('white') ? 'hint-white' : 'hint-black');
+            }
+        });
+        
+        document.getElementById('infoPanel').innerText = `正在播放 ${selected} Major...`;
+        playScale(selected);
+    }
+
+    function handlePress(el, note) {
+        Tone.start();
+        synth.triggerAttackRelease(note, "8n");
+        if (!isChallenge) return;
+
+        const target = scales[currentTargetScale][currentStep];
+        if (isSameNote(note, target)) {
+            el.classList.add('correct');
+            currentStep++;
+            if (currentStep >= 8) {
+                score += 10;
+                document.getElementById('score').innerText = score;
+                saveRecord(currentTargetScale, "✅ 答對", 10);
+                setTimeout(nextQuestion, 600);
+            }
+        } else {
+            el.classList.add('wrong');
+            setTimeout(() => el.classList.remove('wrong'), 300);
+        }
+    }
+
+    function isSameNote(p, t) {
+        const map = {'Bb3':'A#3','Eb4':'D#4','Ab4':'G#4','Db4':'C#4','Bb4':'A#4','Eb3':'D#3','Ab3':'G#3','Gb4':'F#4'};
+        return p === t || map[p] === t || p === map[t];
+    }
+
+    function startChallenge() {
+        if(!document.getElementById('stuName').value) return alert("請輸入姓名後再開始挑戰！");
+        isChallenge = true; score = 0; questionCount = 0;
+        document.getElementById('modeName').innerText = "挑戰模式 (10題)";
+        document.getElementById('practiceModeControls').style.display = 'none';
+        document.getElementById('challengeModeControls').style.display = 'flex';
+        shuffledScales = Object.keys(scales).sort(() => Math.random() - 0.5);
+        nextQuestion();
+    }
+
+    function nextQuestion() {
+        if (questionCount >= 10) {
+            alert("恭喜完成 10 題挑戰！總分：" + score);
+            exitChallenge();
+            return;
+        }
+        currentTargetScale = shuffledScales[questionCount];
+        questionCount++; currentStep = 0;
+        document.querySelectorAll('.key').forEach(k => k.classList.remove('hint-white', 'hint-black', 'correct'));
+        document.getElementById('infoPanel').innerText = `第 ${questionCount} 題：請彈出 ${currentTargetScale} Major`;
+    }
+
+    function skip() {
+        saveRecord(currentTargetScale, "❌ 跳過", 0);
+        const targetNotes = scales[currentTargetScale];
+        document.querySelectorAll('.key').forEach(k => {
+            if (targetNotes.some(t => isSameNote(k.dataset.note, t))) {
+                k.classList.add(k.classList.contains('white') ? 'hint-white' : 'hint-black');
+            }
+        });
+        setTimeout(nextQuestion, 2000);
+    }
+
+    function exitChallenge() {
+        isChallenge = false;
+        document.getElementById('modeName').innerText = "自由練習模式";
+        document.getElementById('practiceModeControls').style.display = 'flex';
+        document.getElementById('challengeModeControls').style.display = 'none';
+        document.getElementById('infoPanel').innerText = "已返回練習模式。";
+        initScaleAndPlay();
+    }
+
+    function tryEnterTeacherMode() {
+        if(prompt("請輸入密碼：") === "teacher") {
+            document.getElementById('studentView').style.display = 'none';
+            document.getElementById('teacherView').style.display = 'block';
+            const tbody = document.getElementById('teacherTableBody');
+            tbody.innerHTML = allRecords.map(r => `<tr><td>${r.name}</td><td>${r.class}</td><td>${r.no}</td><td>${r.scale}</td><td>${r.result}</td><td>${r.score}</td></tr>`).join('');
+        }
+    }
+
+    function saveRecord(scale, res, pts) {
+        allRecords.push({
+            name: document.getElementById('stuName').value,
+            class: document.getElementById('stuClass').value,
+            no: document.getElementById('stuNo').value,
+            scale: scale, result: res, score: pts
+        });
+        localStorage.setItem('musicRecords', JSON.stringify(allRecords));
+    }
+
+    async function playScale(t) {
+        await Tone.start();
+        const s = t || document.getElementById('scaleSelect').value;
+        scales[s].forEach((n, i) => {
+            synth.triggerAttackRelease(n, "8n", Tone.now() + i * 0.4);
+        });
+    }
+
+    createPiano();
+    initScaleAndPlay(); // 啟動時自動載入 C Major 提示並播放
+</script>
+</body>
+</html>
