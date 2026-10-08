@@ -2,20 +2,20 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <title>音樂大調教學系統 - 自由切換版</title>
+    <title>音樂大調教學系統 - Google 試算表雲端同步版</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root { --primary: #3498db; --success: #2ecc71; --error: #e74c3c; --warning: #f1c40f; --dark: #2c3e50; --skip: #9b59b6; }
         body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; background: #f0f4f8; padding: 20px; }
-        .container { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 95%; max-width: 1250px; margin: auto; }
+        .container { background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 95%; max-width: 1400px; margin: auto; }
         
         .piano-wrapper { overflow-x: auto; padding: 50px 10px; background: #222; border-radius: 15px; box-shadow: inset 0 0 30px #000; margin-top: 20px; }
         .piano { display: flex; position: relative; justify-content: center; height: 250px; }
         
         .key { border: 1px solid #000; transition: all 0.1s; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 15px; font-weight: bold; cursor: pointer; user-select: none; text-align: center; }
-        .white { width: 55px; height: 220px; background: white; z-index: 1; border-radius: 0 0 8px 8px; color: #333; font-size: 18px; }
-        .black { width: 38px; height: 135px; background: #333; z-index: 2; margin-left: -19px; margin-right: -19px; border-radius: 0 0 5px 5px; color: #fff; font-size: 11px; line-height: 1.4; padding-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); }
+        .white { width: 45px; height: 220px; background: white; z-index: 1; border-radius: 0 0 8px 8px; color: #333; font-size: 16px; }
+        .black { width: 30px; height: 135px; background: #333; z-index: 2; margin-left: -15px; margin-right: -15px; border-radius: 0 0 5px 5px; color: #fff; font-size: 10px; line-height: 1.3; padding-bottom: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); }
 
         .hint-white { background: #d1ecf1 !important; border-bottom: 10px solid var(--primary); }
         .hint-black { background: var(--primary) !important; border: 1px solid white; }
@@ -44,7 +44,7 @@
 
     <div id="studentView" class="view-section">
         <div class="header-box">
-            <h1>🎹 音樂大調學習與挑戰</h1>
+            <h1>🎹 音樂大調學習與挑戰 (E4-E6 擴展版)</h1>
             <div class="student-info">
                 <input type="text" id="stuName" placeholder="姓名">
                 <input type="text" id="stuClass" placeholder="班別">
@@ -57,6 +57,7 @@
         </div>
 
         <div class="controls">
+            <!-- 自由模式控制項 -->
             <div id="practiceModeControls">
                 <select id="scaleSelect" onchange="initScaleAndPlay()">
                     <option value="C">C Major</option>
@@ -74,6 +75,7 @@
                 <button class="btn-green" onclick="startChallenge()">進入挑戰模式 (10題) 🚀</button>
             </div>
             
+            <!-- 挑戰模式控制項 -->
             <div id="challengeModeControls" style="display:none;">
                 <button class="btn-blue" onclick="playScale(currentTargetScale)">聽範例音 🔊</button>
                 <button style="background: var(--skip)" onclick="skip()">跳過此題 💡</button>
@@ -90,51 +92,62 @@
         </div>
     </div>
 
+    <!-- 老師界面 -->
     <div id="teacherView" style="display:none;">
-        <h2 style="text-align:center;">📊 成績管理面板</h2>
+        <h2 style="text-align:center;">📊 成績管理面板 (雲端實時數據)</h2>
         <div style="text-align:center; margin-bottom:20px;">
             <button class="btn-green" onclick="exportToExcel()">導出 Excel 報表</button>
             <button class="btn-blue" onclick="location.reload()">返回學生練習</button>
         </div>
-        <table id="teacherTable" style="width:100%; border-collapse: collapse;">
-            <thead><tr style="background:#333; color:#fff;"><th>姓名</th><th>班別</th><th>學號</th><th>考查大調</th><th>結果</th><th>得分</th></tr></thead>
-            <tbody id="teacherTableBody" style="text-align:center;"></tbody>
+        <table id="teacherTable" style="width:100%; border-collapse: collapse; margin-top: 10px;">
+            <thead><tr style="background:#333; color:#fff; height:40px;"><th>時間</th><th>姓名</th><th>班別</th><th>學號</th><th>考查大調</th><th>結果</th><th>得分</th></tr></thead>
+            <tbody id="teacherTableBody" style="text-align:center; line-height:30px;"></tbody>
         </table>
     </div>
 </div>
 
 <script>
+    // 已自動填入你的專屬 Google Apps Script Web App 網址
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwk7RnryrIOIHjrfLyXQp4KQfPNZYV6zDKt2FFaXZITn2MWNAq7gTWsFHkCYOhnYVxlnA/exec";
+
     const synth = new Tone.Synth().toDestination();
     let score = 0, isChallenge = false, questionCount = 0, currentStep = 0, currentTargetScale = "";
     let allRecords = JSON.parse(localStorage.getItem('musicRecords')) || [];
 
+    // 精準覆蓋 E4 到 E6 鋼琴佈局
     const pianoLayout = [
-        {n:'F3', t:'white', name:'F'}, {n:'F#3', t:'black', name:'F#<br>Gb'},
-        {n:'G3', t:'white', name:'G'}, {n:'G#3', t:'black', name:'G#<br>Ab'},
-        {n:'A3', t:'white', name:'A'}, {n:'A#3', t:'black', name:'A#<br>Bb'},
-        {n:'B3', t:'white', name:'B'},
-        {n:'C4', t:'white', name:'C'}, {n:'C#4', t:'black', name:'C#<br>Db'},
-        {n:'D4', t:'white', name:'D'}, {n:'D#4', t:'black', name:'D#<br>Eb'},
+        // 4音域
         {n:'E4', t:'white', name:'E'},
         {n:'F4', t:'white', name:'F'}, {n:'F#4', t:'black', name:'F#<br>Gb'},
         {n:'G4', t:'white', name:'G'}, {n:'G#4', t:'black', name:'G#<br>Ab'},
         {n:'A4', t:'white', name:'A'}, {n:'A#4', t:'black', name:'A#<br>Bb'},
         {n:'B4', t:'white', name:'B'},
+        // 5音域
         {n:'C5', t:'white', name:'C'}, {n:'C#5', t:'black', name:'C#<br>Db'},
-        {n:'D5', t:'white', name:'D'}
+        {n:'D5', t:'white', name:'D'}, {n:'D#5', t:'black', name:'D#<br>Eb'},
+        {n:'E5', t:'white', name:'E'},
+        {n:'F5', t:'white', name:'F'}, {n:'F#5', t:'black', name:'F#<br>Gb'},
+        {n:'G5', t:'white', name:'G'}, {n:'G#5', t:'black', name:'G#<br>Ab'},
+        {n:'A5', t:'white', name:'A'}, {n:'A#5', t:'black', name:'A#<br>Bb'},
+        {n:'B5', t:'white', name:'B'},
+        // 6音域
+        {n:'C6', t:'white', name:'C'}, {n:'C#6', t:'black', name:'C#<br>Db'},
+        {n:'D6', t:'white', name:'D'}, {n:'D#6', t:'black', name:'D#<br>Eb'},
+        {n:'E6', t:'white', name:'E'}
     ];
 
+    // 各大調組成音 (包含修正後的 Eb Major: Eb5 F5 G5 Ab5 Bb5 C6 D6 Eb6)
     const scales = {
-        'C':['C4','D4','E4','F4','G4','A4','B4','C5'],
-        'G':['G3','A3','B3','C4','D4','E4','F#4','G4'],
-        'D':['D4','E4','F#4','G4','A4','B4','C#5','D5'],
-        'A':['A3','B3','C#4','D4','E4','F#4','G#4','A4'],
-        'E':['E3','F#3','G#3','A3','B3','C#4','D#4','E4'],
-        'F':['F3','G3','A3','Bb3','C4','D4','E4','F4'],
-        'Bb':['Bb3','C4','D4','Eb4','F4','G4','A4','Bb4'],
-        'Eb':['Eb3','F3','G3','Ab3','Bb3','C4','D4','Eb4'],
-        'Ab':['Ab3','Bb3','C4','Db4','Eb4','F4','G4','Ab4'],
-        'Db':['Db4','Eb4','F4','Gb4','Ab4','Bb4','C5','Db5']
+        'C':['C5','D5','E5','F5','G5','A5','B5','C6'],
+        'G':['G4','A4','B4','C5','D5','E5','F#5','G5'],
+        'D':['D5','E5','F#5','G5','A5','B5','C#6','D6'],
+        'A':['A4','B4','C#5','D5','E5','F#5','G#5','A5'],
+        'E':['E4','F#4','G#4','A4','B4','C#5','D#5','E5'],
+        'F':['F4','G4','A4','Bb4','C5','D5','E5','F5'],
+        'Bb':['Bb4','C5','D5','Eb5','F5','G5','A5','Bb5'],
+        'Eb':['Eb5','F5','G5','Ab5','Bb5','C6','D6','Eb6'],
+        'Ab':['Ab4','Bb4','C5','Db5','Eb5','F5','G5','Ab5'],
+        'Db':['Db5','Eb5','F5','Gb5','Ab5','Bb5','C6','Db6']
     };
 
     function createPiano() {
@@ -176,7 +189,7 @@
         if (isSameNote(note, target)) {
             el.classList.add('correct');
             currentStep++;
-            if (currentStep >= 8) {
+            if (currentStep >= scales[currentTargetScale].length) {
                 score += 10;
                 document.getElementById('score').innerText = score;
                 saveRecord(currentTargetScale, "✅ 答對", 10);
@@ -188,9 +201,14 @@
         }
     }
 
+    // 同音異名判斷
     function isSameNote(p, t) {
-        const map = {'Bb3':'A#3','Eb4':'D#4','Ab4':'G#4','Db4':'C#4','Bb4':'A#4','Eb3':'D#3','Ab3':'G#3','Gb4':'F#4'};
-        return p === t || map[p] === t || p === map[t];
+        if (p === t) return true;
+        const map = {
+            'Bb4':'A#4','Eb5':'D#5','Ab4':'G#4','Db5':'C#5','Bb5':'A#5','Eb4':'D#4','Ab5':'G#5','Gb5':'F#5','Gb4':'F#4','Db6':'C#6','Eb6':'D#6',
+            'A#4':'Bb4','D#5':'Eb5','G#4':'Ab4','C#5':'Db5','A#5':'Bb5','D#4':'Eb4','G#5':'Ab5','F#5':'Gb5','F#4':'Gb4','C#6':'Db6','D#6':'Eb6'
+        };
+        return map[p] === t || p === map[t];
     }
 
     function startChallenge() {
@@ -235,23 +253,67 @@
         initScaleAndPlay();
     }
 
-    function tryEnterTeacherMode() {
+    // 進入老師管理：優先讀取 Google 試算表雲端數據
+    async function tryEnterTeacherMode() {
         if(prompt("請輸入密碼：") === "teacher") {
             document.getElementById('studentView').style.display = 'none';
             document.getElementById('teacherView').style.display = 'block';
             const tbody = document.getElementById('teacherTableBody');
-            tbody.innerHTML = allRecords.map(r => `<tr><td>${r.name}</td><td>${r.class}</td><td>${r.no}</td><td>${r.scale}</td><td>${r.result}</td><td>${r.score}</td></tr>`).join('');
+            tbody.innerHTML = '<tr><td colspan="7">正在從 Google 試算表同步雲端數據...</td></tr>';
+
+            try {
+                const response = await fetch(GOOGLE_SCRIPT_URL);
+                const sheetData = await response.json();
+                
+                if (sheetData.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7">目前 Google 試算表中尚無學生紀錄</td></tr>';
+                    return;
+                }
+
+                // 渲染來自 Google 試算表的數據
+                tbody.innerHTML = sheetData.map(r => 
+                    `<tr>
+                        <td>${r.time ? new Date(r.time).toLocaleString() : ''}</td>
+                        <td>${r.name || ''}</td>
+                        <td>${r.class || ''}</td>
+                        <td>${r.no || ''}</td>
+                        <td>${r.scale || ''}</td>
+                        <td>${r.result || ''}</td>
+                        <td>${r.score || 0}</td>
+                    </tr>`
+                ).join('');
+            } catch (err) {
+                console.error("雲端讀取失敗:", err);
+                tbody.innerHTML = '<tr><td colspan="7" style="color:red;">無法讀取雲端數據，以下為本機備份紀錄：</td></tr>';
+                // 備份機制：若網路不通，載入本機紀錄
+                const localHtml = allRecords.map(r => `<tr><td>本地紀錄</td><td>${r.name}</td><td>${r.class}</td><td>${r.no}</td><td>${r.scale}</td><td>${r.result}</td><td>${r.score}</td></tr>`).join('');
+                tbody.innerHTML += localHtml;
+            }
         }
     }
 
+    // 將資料同步上傳至 Google Sheet 與 本機
     function saveRecord(scale, res, pts) {
-        allRecords.push({
+        const record = {
             name: document.getElementById('stuName').value,
             class: document.getElementById('stuClass').value,
             no: document.getElementById('stuNo').value,
-            scale: scale, result: res, score: pts
-        });
+            scale: scale, 
+            result: res, 
+            score: pts
+        };
+
+        // 1. 本地儲存
+        allRecords.push(record);
         localStorage.setItem('musicRecords', JSON.stringify(allRecords));
+
+        // 2. 自動傳送至 Google 試算表
+        fetch(GOOGLE_SCRIPT_URL, {
+            method: "POST",
+            mode: "no-cors",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(record)
+        }).catch(err => console.error("雲端上傳失敗:", err));
     }
 
     async function playScale(t) {
@@ -262,8 +324,15 @@
         });
     }
 
+    function exportToExcel() {
+        const worksheet = XLSX.utils.json_to_sheet(allRecords);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "成績分析");
+        XLSX.writeFile(workbook, "音樂大調挑戰成績.xlsx");
+    }
+
     createPiano();
-    initScaleAndPlay(); // 啟動時自動載入 C Major 提示並播放
+    initScaleAndPlay();
 </script>
 </body>
 </html>
